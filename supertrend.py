@@ -11,10 +11,21 @@ import numpy as np
 from datetime import datetime
 import time
 
-exchange = ccxt.binance({
+exchange_id = config.EXCHANGE
+exchange_class = getattr(ccxt, exchange_id)
+exchange = exchange_class({
     "apiKey": config.BINANCE_API_KEY,
     "secret": config.BINANCE_SECRET_KEY
 })
+
+def fetch_balance():
+    balance = exchange.fetch_balance({
+        "type":"future"
+    })
+    
+    print(balance['total'])
+
+    return balance
 
 def tr(data):
     data['previous_close'] = data['close'].shift(1)
@@ -63,7 +74,7 @@ in_position = False
 def check_buy_sell_signals(df):
     global in_position
 
-    print("checking for buy and sell signals")
+    print("checking for buy and sell signals", config.SYMBOL)
     print(df.tail(5))
     last_row_index = len(df.index) - 1
     previous_row_index = last_row_index - 1
@@ -71,7 +82,7 @@ def check_buy_sell_signals(df):
     if not df['in_uptrend'][previous_row_index] and df['in_uptrend'][last_row_index]:
         print("changed to uptrend, buy")
         if not in_position:
-            order = exchange.create_market_buy_order('ETH/USD', 0.05)
+            order = exchange.create_market_buy_order(config.SYMBOL, 0.05)
             print(order)
             in_position = True
         else:
@@ -80,7 +91,7 @@ def check_buy_sell_signals(df):
     if df['in_uptrend'][previous_row_index] and not df['in_uptrend'][last_row_index]:
         if in_position:
             print("changed to downtrend, sell")
-            order = exchange.create_market_sell_order('ETH/USD', 0.05)
+            order = exchange.create_market_sell_order(config.SYMBOL, 0.05)
             print(order)
             in_position = False
         else:
@@ -88,16 +99,15 @@ def check_buy_sell_signals(df):
 
 def run_bot():
     print(f"Fetching new bars for {datetime.now().isoformat()}")
-    bars = exchange.fetch_ohlcv('ETH/USDT', timeframe='1m', limit=100)
+    bars = exchange.fetch_ohlcv(config.SYMBOL, timeframe=config.TIMEFRAME, limit=100)
     df = pd.DataFrame(bars[:-1], columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
     df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
 
-    supertrend_data = supertrend(df)
-    
+    supertrend_data = supertrend(df) 
     check_buy_sell_signals(supertrend_data)
 
 
-schedule.every(10).seconds.do(run_bot)
+schedule.every(10).seconds.do(fetch_balance)
 
 
 while True:
