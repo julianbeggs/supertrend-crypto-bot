@@ -1,11 +1,11 @@
-import ccxt
+import warnings
+warnings.filterwarnings('ignore')
 import config
+
+import ccxt
 import schedule
 import pandas as pd
 pd.set_option('display.max_rows', None)
-
-import warnings
-warnings.filterwarnings('ignore')
 
 import numpy as np
 from datetime import datetime
@@ -18,14 +18,12 @@ exchange = exchange_class({
     "secret": config.BINANCE_SECRET_KEY
 })
 
-def fetch_balance():
+def fetch_balance(type_):
     balance = exchange.fetch_balance({
-        "type":"future"
+        "type":type_
     })
-    
-    print(balance['total'])
 
-    return balance
+    return balance['total']
 
 def tr(data):
     data['previous_close'] = data['close'].shift(1)
@@ -33,15 +31,15 @@ def tr(data):
     data['high-pc'] = abs(data['high'] - data['previous_close'])
     data['low-pc'] = abs(data['low'] - data['previous_close'])
 
-    tr = data[['high-low', 'high-pc', 'low-pc']].max(axis=1)
+    tr_ = data[['high-low', 'high-pc', 'low-pc']].max(axis=1)
 
-    return tr
+    return tr_
 
 def atr(data, period):
     data['tr'] = tr(data)
-    atr = data['tr'].rolling(period).mean()
+    atr_ = data['tr'].rolling(period).mean()
 
-    return atr
+    return atr_
 
 def supertrend(df, period=7, atr_multiplier=3):
     hl2 = (df['high'] + df['low']) / 2
@@ -69,10 +67,10 @@ def supertrend(df, period=7, atr_multiplier=3):
     return df
 
 
-in_position = False
+IN_POSITION = False
 
 def check_buy_sell_signals(df):
-    global in_position
+    global IN_POSITION
 
     print("checking for buy and sell signals", config.SYMBOL)
     print(df.tail(5))
@@ -81,19 +79,19 @@ def check_buy_sell_signals(df):
 
     if not df['in_uptrend'][previous_row_index] and df['in_uptrend'][last_row_index]:
         print("changed to uptrend, buy")
-        if not in_position:
-            order = exchange.create_market_buy_order(config.SYMBOL, 0.05)
-            print(order)
-            in_position = True
+        if not IN_POSITION:
+            # order = exchange.create_market_buy_order(config.SYMBOL, 0.05)
+            # print(order)
+            IN_POSITION = True
         else:
             print("already in position, nothing to do")
     
     if df['in_uptrend'][previous_row_index] and not df['in_uptrend'][last_row_index]:
-        if in_position:
+        if IN_POSITION:
             print("changed to downtrend, sell")
-            order = exchange.create_market_sell_order(config.SYMBOL, 0.05)
-            print(order)
-            in_position = False
+            # order = exchange.create_market_sell_order(config.SYMBOL, 0.05)
+            # print(order)
+            IN_POSITION = False
         else:
             print("You aren't in position, nothing to sell")
 
@@ -103,11 +101,12 @@ def run_bot():
     df = pd.DataFrame(bars[:-1], columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
     df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
 
-    supertrend_data = supertrend(df) 
+    supertrend_data = supertrend(df)
+    # print(supertrend_data.tail(5))
     check_buy_sell_signals(supertrend_data)
 
 
-schedule.every(10).seconds.do(fetch_balance)
+schedule.every(10).seconds.do(run_bot)
 
 
 while True:
